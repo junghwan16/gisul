@@ -86,6 +86,37 @@ inferring it from two separate `bench` runs.
 3. **Retrospective on a shipped change.** "Was that skill rewrite from last
    month actually worth it?" → `bench <skill> --vs v1.2.0` (a tag) or
    `--vs <commit-sha>`.
+4. **TDD-style capture-then-fix.** A production case is noticed to misfire or
+   answer badly. Rather than fixing the skill first and hoping the fix holds,
+   the author captures the failing prompt as a case *before* touching
+   `SKILL.md` (red), edits the skill, then runs `--vs HEAD` to confirm the
+   new version passes the just-captured case without regressing the existing
+   ones (green). See "Related workflow" below — this is a natural companion
+   to `--vs` but is its own, smaller piece of surface.
+
+### Related workflow — capture-then-fix (not in this PRD's scope, noted for sequencing)
+
+`--vs` answers "is the new version better," which is exactly the check this
+workflow needs at its "green" step — but getting to a well-formed case in
+the first place is a separate gap. Today, capturing a real failure means
+hand-writing a case into the suite's YAML and manually confirming it fails
+before editing (nothing distinguishes "case I haven't tried yet" from "case
+I've confirmed is currently red").
+
+A `skillevel capture <skill> "<prompt>"` command would close that gap: scaffold
+the case from the live prompt, run it once against the current skill to
+confirm it's actually red (rather than trusting the author's assumption),
+and mark it in the YAML as a known-failing regression case (distinct from
+`new`'s TODO placeholders, which are unwritten rather than confirmed-failing).
+Paired with `--vs`, the loop becomes: `capture` (red, proven) → edit
+`SKILL.md` → `bench <skill> --vs HEAD` (green, and no other case broke in the
+process).
+
+Left as a separate, follow-on PRD rather than folded into `--vs` here — the
+two are independently useful (`--vs` has value with zero captured cases,
+`capture` has value with zero old-version comparisons) and bundling them
+would make `--vs` depend on new case-file semantics (a "confirmed-red" case
+state) it doesn't otherwise need.
 
 ## CLI design
 
