@@ -1,14 +1,14 @@
 {
   "name": "skillevel",
-  "version": "0.2.0",
-  "description": "A test runner and authoring toolchain for Claude Code skills — vitest for skills. Scaffold, lint, and format SKILL.md files, then run YAML cases through `claude -p` to check that each skill triggers (and behaves) the way it should.",
+  "version": "1.0.0",
+  "description": "A test runner and authoring toolchain for Claude Code skills — vitest for skills. Scaffold, lint, and format SKILL.md files, run YAML cases through `claude -p` to check that each skill triggers the way it should, and bench the skill-on/off lift to see if it actually helps.",
   "type": "module",
   "bin": {
     "skillevel": "src/cli.js"
   },
   "scripts": {
     "start": "node src/cli.js",
-    "smoke": "node src/cli.js --version && node src/cli.js __no_such_skill__",
+    "smoke": "node src/cli.js --version && node src/cli.js __no_such_skill__ && node src/cli.js bench __no_such_skill__",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

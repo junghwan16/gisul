@@ -16,20 +16,34 @@ import { DEFAULT_JUDGE_MODEL, JUDGE_TIMEOUT_MS } from "./constants.js";
  * @returns {Promise<import('./types.js').CheckResult[]>}
  */
 export async function evaluateTrial(testCase, skill, outcome, judgeModel) {
-  // trigger shorthands are already covered by the primary check; the rest are
-  // independent, so evaluate them concurrently (a `judge` check spawns a subprocess)
+  const evaluated = await evaluateOutputChecks(testCase, outcome, judgeModel);
+  return [triggerCheck(testCase, skill, outcome), ...evaluated];
+}
+
+/**
+ * Evaluate only a case's output checks (`match` / `absent` / `judge`) — no
+ * trigger check. This is what `bench` grades on both arms; trigger shorthands
+ * are strings and are skipped.
+ *
+ * @param {import('./types.js').TestCase} testCase
+ * @param {import('./types.js').RunOutcome} outcome
+ * @param {string} [judgeModel]
+ * @returns {Promise<import('./types.js').CheckResult[]>}
+ */
+export function evaluateOutputChecks(testCase, outcome, judgeModel) {
+  // the checks are independent, so evaluate them concurrently (a `judge`
+  // check spawns a subprocess)
   const outputChecks =
     /** @type {Array<Exclude<import('./types.js').Expectation, string>>} */ (
       (testCase.expect ?? []).filter(
         (expectation) => typeof expectation === "object",
       )
     );
-  const evaluated = await Promise.all(
+  return Promise.all(
     outputChecks.map((expectation) =>
       evaluateExpectation(expectation, outcome, judgeModel),
     ),
   );
-  return [triggerCheck(testCase, skill, outcome), ...evaluated];
 }
 
 /**

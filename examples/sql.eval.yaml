@@ -19,6 +19,9 @@ cases:
     expect:
       - triggered
       - match: "COUNT|GROUP BY"
+      # Happy cases with match/absent/judge are also what `skillevel bench sql`
+      # A/Bs (skill-on vs skill-off) to measure the skill's lift:
+      # - judge: "Is the query read-only and correctly scoped to last week?"
 
   # -- negative: near-misses that must NOT fire --------------------------
   - id: neg-concept

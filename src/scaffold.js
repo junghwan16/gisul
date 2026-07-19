@@ -60,6 +60,8 @@ Authoring guide (delete this comment when done):
   heavy-handed MUSTs — the model reasons better from rationale than rules.
 - After writing, test triggering with:
     skillevel init ${skill} && skillevel ${skill}
+  and measure whether the skill actually improves the output with:
+    skillevel bench ${skill}
 -->
 
 # ${skill}

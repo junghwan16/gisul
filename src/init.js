@@ -92,6 +92,8 @@ function renderTemplate(skill, triggerHintBlock) {
 #     unrelated prompts are weak
 #   - Real usage / production traces make the best cases — paste them in
 #   - Judge the result, not the path — not "loaded on turn 1", but "did the task"
+#   - Happy cases with match/absent/judge also power \`skillevel bench ${skill}\`
+#     (skill-on vs skill-off lift — does the skill actually help?)
 ${triggerHintBlock}
 skill: ${skill}
 trials: 5

@@ -7,8 +7,9 @@
 A test runner and authoring toolchain for **Claude Code skills** — `vitest`,
 but a "test" is a prompt and the thing under test is whether a skill
 **triggers** (and behaves) the way its author intended. It covers the whole
-loop: scaffold a skill (`new`), keep it valid and tidy (`lint`, `fmt`), then
-eval its triggering (`init`, run).
+loop: scaffold a skill (`new`), keep it valid and tidy (`lint`, `fmt`), eval
+its triggering (`init`, run), and measure whether it actually improves the
+output (`bench`).
 
 ```bash
 $ skillevel sql
@@ -55,9 +56,11 @@ skillevel init sql           # scaffold sql.eval.yaml (template + guidance)
 # ...write your cases...
 skillevel sql                # run them
 skillevel                    # run every *.eval.yaml it can find
-skillevel --watch            # re-run on SKILL.md / case edits
 skillevel --ci               # exit non-zero on any failure or unwritten case
-skillevel -r junit --json out.json
+skillevel --json out.json    # also write full results as JSON
+
+skillevel bench sql          # A/B: same prompts with vs without the skill — the lift
+skillevel bench sql --min-lift 10   # gate: fail if the lift drops below +10pp
 
 skillevel new my-skill       # scaffold my-skill/SKILL.md (template + guidance)
 skillevel lint [skill|path]  # validate SKILL.md files; no target = all under cwd
@@ -143,11 +146,43 @@ ones, ideally from real usage traces.
 | `triggered` / `not_triggered` | shorthands validated against `should_trigger`                                                      |
 | `match: <re>`                 | the case-insensitive regex appears in the response                                                 |
 | `absent: <re>`                | the regex does **not** appear                                                                      |
-| `judge: <q>`                  | a fresh Claude grades the response `PASS` _(v1.1)_                                                 |
+| `judge: <q>`                  | a fresh Claude (one turn, no skills) grades the response `PASS` against the rubric                 |
 
 A case's score is `passes / trials`; it's green at `>= 0.8` (configurable) so one
 flake doesn't fail it. A prompt with an unfilled `<placeholder>` is reported as
 **TODO** and fails `--ci`.
+
+## Does it actually help? (`bench`)
+
+Triggering is necessary, not sufficient — a skill also has to **earn its
+tokens**. `bench` runs each case's prompt twice, once with the skill available
+and once with skills blocked (`--disallowedTools Skill`), grades both outputs
+on the case's `match` / `absent` / `judge` expectations, and reports the lift:
+
+```bash
+$ skillevel bench sql
+
+sql  ./sql.eval.yaml
+  case                    with   without    lift
+  aggregate-revenue        3/3       1/3   +67pp
+  safe-delete              3/3       3/3     0pp
+  neg-concept           — skipped (needs should_trigger: true + match/absent/judge)
+
+▲ skill lift: +34pp   (48% → 82%)   2 benched · 1 skipped   $1.10
+```
+
+- **lift ≫ 0** — the skill earns its place.
+- **lift ≈ 0 across the board** — retire candidate: the model already does it.
+  Keep the cases as a regression guard.
+- `--min-lift <pp>` turns the number into a CI gate, so an edit that quietly
+  regresses quality fails the build.
+
+Only happy cases (`should_trigger: true`) with output expectations are
+benchable — a trigger-only case has nothing to compare. Trials default to 3
+per arm (`--trials` to change): every bench case costs two full runs plus a
+grader call per `judge`. Both arms run interleaved in the same batch so model
+drift hits them equally. Note the baseline blocks _all_ skills, not just the
+one under test — fine unless the prompt would have pulled in a sibling.
 
 ## How it works
 
@@ -155,13 +190,10 @@ Each case × trial shells out to
 `claude -p "<prompt>" --output-format stream-json --verbose`, parses the event
 stream (a `Skill` tool_use carries the fired skill in `input.skill`; the
 `result` event carries text + `total_cost_usd`), and — for trigger-only cases —
-kills the run the moment the verdict is known, to save cost.
+kills the run the moment the verdict is known, to save cost. `bench` adds
+`--disallowedTools Skill` for the baseline arm and always runs to completion.
 
-## Status
-
-v1 measures **triggering** (over/under-firing). It does not yet measure whether
-the skill improves the _output_ — that's the v2 skill-on/off A/B with an
-LLM grader. See [DESIGN.md](./DESIGN.md).
+See [DESIGN.md](./DESIGN.md) for the full design and roadmap.
 
 ## License
 

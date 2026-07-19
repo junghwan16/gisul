@@ -24,6 +24,12 @@ export const NEGATIVE_MAX_TURNS = 3;
 /** Timeout for a single LLM-judge call. */
 export const JUDGE_TIMEOUT_MS = 60_000;
 
+/**
+ * Default trials per arm for `bench` — lower than eval trials because every
+ * bench case runs twice (with/without) plus a grader call per output.
+ */
+export const BENCH_TRIALS = 3;
+
 /** Model used by the LLM judge when a suite does not specify one. */
 export const DEFAULT_JUDGE_MODEL = "sonnet";
 

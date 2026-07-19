@@ -1,6 +1,7 @@
 /**
- * @file Turns suite results into human- or machine-readable output. Reporters:
- * `grid` (default), `dot`, `json`, `junit`.
+ * @file Turns run results into terminal output: the case grid for evals, the
+ * A/B lift table for bench, and the closing summary lines. Machine output is
+ * plain JSON of the result objects, written by the CLI via `--json`.
  */
 
 import pc from "picocolors";
@@ -32,26 +33,6 @@ export function summarize(suites) {
 }
 
 /**
- * Render results with the chosen reporter.
- *
- * @param {import('./types.js').SuiteResult[]} suites
- * @param {"grid" | "dot" | "json" | "junit" | string} reporter
- * @returns {string}
- */
-export function render(suites, reporter) {
-  switch (reporter) {
-    case "json":
-      return JSON.stringify(suites, null, 2);
-    case "junit":
-      return renderJUnit(suites);
-    case "dot":
-      return renderDot(suites);
-    default:
-      return renderGrid(suites);
-  }
-}
-
-/**
  * Render the closing one-line summary.
  *
  * @param {Summary} summary
@@ -67,34 +48,12 @@ export function renderSummary(summary) {
 }
 
 /**
- * The status glyph for a case.
+ * Render the per-case grid for an eval run.
  *
- * @param {import('./types.js').CaseResult} caseResult
- * @returns {string}
- */
-function glyph(caseResult) {
-  if (caseResult.status === "pass") return pc.green("✓");
-  if (caseResult.status === "todo") return pc.yellow("○");
-  return pc.red("✗");
-}
-
-/**
- * The first failing check of the first failing trial, for a hint line.
- *
- * @param {import('./types.js').CaseResult} caseResult
- * @returns {import('./types.js').CheckResult | undefined}
- */
-function firstFailure(caseResult) {
-  return caseResult.trials
-    .find((trial) => !trial.pass)
-    ?.checks.find((check) => !check.ok);
-}
-
-/**
  * @param {import('./types.js').SuiteResult[]} suites
  * @returns {string}
  */
-function renderGrid(suites) {
+export function renderGrid(suites) {
   const lines = [];
   for (const suite of suites) {
     lines.push("", pc.bold(suite.skill) + pc.dim(`  ${suite.file}`));
@@ -121,63 +80,130 @@ function renderGrid(suites) {
 }
 
 /**
- * @param {import('./types.js').SuiteResult[]} suites
+ * Render the A/B lift table for a bench run, one block per suite.
+ *
+ * @param {import('./bench.js').BenchSuiteResult[]} suites
  * @returns {string}
  */
-function renderDot(suites) {
-  return suites
-    .flatMap((suite) => suite.cases)
-    .map((c) =>
-      c.status === "pass"
-        ? pc.green(".")
-        : c.status === "todo"
-          ? pc.yellow("○")
-          : pc.red("F"),
-    )
-    .join("");
-}
-
-/**
- * @param {import('./types.js').SuiteResult[]} suites
- * @returns {string}
- */
-function renderJUnit(suites) {
-  const lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<testsuites>"];
+export function renderBench(suites) {
+  const lines = [];
   for (const suite of suites) {
-    const failures = suite.cases.filter((c) => c.status === "fail").length;
+    lines.push("", pc.bold(suite.skill) + pc.dim(`  ${suite.file}`));
     lines.push(
-      `  <testsuite name="${xml(suite.skill)}" tests="${suite.cases.length}" failures="${failures}">`,
+      pc.dim(
+        `  ${"case".padEnd(22)}${"with".padStart(6)}${"without".padStart(10)}${"lift".padStart(8)}`,
+      ),
     );
-    for (const caseResult of suite.cases) {
-      lines.push(
-        `    <testcase name="${xml(caseResult.id)}" classname="${xml(suite.skill)}">`,
-      );
-      if (caseResult.status === "fail") {
-        const failure = firstFailure(caseResult);
-        lines.push(
-          `      <failure message="${xml(failure?.label ?? "failed")}">${xml(failure?.detail ?? "")}</failure>`,
-        );
-      } else if (caseResult.status === "todo") {
-        lines.push(`      <skipped message="unwritten placeholder"/>`);
+    for (const c of suite.cases) {
+      const id = `  ${c.id.padEnd(22)}`;
+      if (c.status === "todo") {
+        lines.push(id + pc.yellow("TODO — unwritten"));
+        continue;
       }
-      lines.push("    </testcase>");
+      if (c.status === "skipped") {
+        lines.push(
+          id +
+            pc.dim(
+              "— skipped (needs should_trigger: true + match/absent/judge)",
+            ),
+        );
+        continue;
+      }
+      lines.push(
+        id +
+          `${c.withPassed}/${c.trials}`.padStart(6) +
+          `${c.withoutPassed}/${c.trials}`.padStart(10) +
+          paintLift(liftPp(c), 8),
+      );
     }
-    lines.push("  </testsuite>");
   }
-  lines.push("</testsuites>");
   return lines.join("\n");
 }
 
 /**
- * Escape a string for use in XML text/attributes.
+ * Render the closing bench summary: overall lift, rates, and cost.
  *
- * @param {string} value
+ * @param {import('./bench.js').BenchSummary} summary
  * @returns {string}
  */
-function xml(value) {
-  return value.replace(
-    /[<>&"]/g,
-    (ch) =>
-      ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[ch] ?? ch,
-  );
+export function renderBenchSummary(summary) {
+  if (summary.benched === 0) {
+    return `\n${pc.yellow("nothing to bench")} ${pc.dim(
+      "— bench needs happy cases (should_trigger: true) with match/absent/judge expectations",
+    )}`;
+  }
+  const arrow =
+    summary.liftPp > 0
+      ? pc.green("▲")
+      : summary.liftPp < 0
+        ? pc.red("▼")
+        : pc.dim("▬");
+  const rates = `(${pct(summary.withoutRate)} → ${pct(summary.withRate)})`;
+  const counts = [
+    `${summary.benched} benched`,
+    summary.skipped ? `${summary.skipped} skipped` : null,
+    summary.todo ? `${summary.todo} todo` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return `\n${arrow} skill lift: ${paintLift(summary.liftPp)}   ${pc.dim(
+    `${rates}   ${counts}   $${summary.costUsd.toFixed(3)}`,
+  )}`;
+}
+
+/**
+ * A case's lift in percentage points.
+ *
+ * @param {import('./bench.js').BenchCaseResult} c
+ * @returns {number}
+ */
+function liftPp(c) {
+  return Math.round(((c.withPassed - c.withoutPassed) / c.trials) * 100);
+}
+
+/**
+ * Colour a lift value: green up, red down, dim flat. Padding is applied to
+ * the plain text so ANSI codes don't skew column widths.
+ *
+ * @param {number} pp
+ * @param {number} [width]
+ * @returns {string}
+ */
+function paintLift(pp, width = 0) {
+  const text = `${pp > 0 ? "+" : ""}${pp}pp`.padStart(width);
+  return pp > 0 ? pc.green(text) : pp < 0 ? pc.red(text) : pc.dim(text);
+}
+
+/**
+ * "82%".
+ *
+ * @param {number} rate
+ * @returns {string}
+ */
+function pct(rate) {
+  return `${Math.round(rate * 100)}%`;
+}
+
+/**
+ * The status glyph for a case.
+ *
+ * @param {import('./types.js').CaseResult} caseResult
+ * @returns {string}
+ */
+function glyph(caseResult) {
+  if (caseResult.status === "pass") return pc.green("✓");
+  if (caseResult.status === "todo") return pc.yellow("○");
+  return pc.red("✗");
+}
+
+/**
+ * The first failing check of the first failing trial, for a hint line.
+ *
+ * @param {import('./types.js').CaseResult} caseResult
+ * @returns {import('./types.js').CheckResult | undefined}
+ */
+function firstFailure(caseResult) {
+  return caseResult.trials
+    .find((trial) => !trial.pass)
+    ?.checks.find((check) => !check.ok);
 }

@@ -16,6 +16,8 @@ import { RUN_TIMEOUT_MS } from "./constants.js";
  * @property {number} [maxTurns]                 Cap passed to `--max-turns`.
  * @property {number} [timeoutMs]                Hard timeout (default {@link RUN_TIMEOUT_MS}).
  * @property {string} [cwd]                      Working directory for the child process.
+ * @property {boolean} [disallowSkills]          Block the Skill tool (`--disallowedTools Skill`) —
+ *                                               the "without skill" arm of a bench run.
  * @property {(skill: string) => boolean} [stopOnSkill]
  *   Called each time a skill fires; return `true` to end the run early. Used to
  *   avoid paying for a whole turn when only the trigger verdict matters.
@@ -39,6 +41,13 @@ export async function runClaude(prompt, options = {}) {
   const child = spawn("claude", buildArgs(prompt, options), {
     cwd: options.cwd,
     stdio: ["ignore", "pipe", "pipe"],
+  });
+  // Without a listener, a failed spawn (claude not installed) crashes the
+  // process with an unhandled 'error' event mid-stream.
+  /** @type {NodeJS.ErrnoException | null} */
+  let spawnError = null;
+  child.once("error", (err) => {
+    spawnError = err;
   });
 
   const skills = new Set();
@@ -74,8 +83,16 @@ export async function runClaude(prompt, options = {}) {
     }
   }
 
-  await once(child, "close");
+  await once(child, "close").catch(() => {}); // close still fires after a spawn error
   clearTimeout(timer);
+
+  if (spawnError) {
+    throw spawnError.code === "ENOENT"
+      ? new Error(
+          "`claude` CLI not found on PATH — install Claude Code first: https://claude.com/claude-code",
+        )
+      : spawnError;
+  }
 
   return {
     text,
@@ -99,6 +116,7 @@ function buildArgs(prompt, options) {
   const args = ["-p", prompt, ...STREAM_ARGS];
   if (options.model) args.push("--model", options.model);
   if (options.maxTurns) args.push("--max-turns", String(options.maxTurns));
+  if (options.disallowSkills) args.push("--disallowedTools", "Skill");
   return args;
 }
 

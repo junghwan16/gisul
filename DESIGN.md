@@ -13,8 +13,9 @@ one, two things matter:
    near-misses it shouldn't (over/under-firing)?
 2. (later) **Task quality** — does the skill actually make the output better?
 
-`skillevel` v1 nails **#1**. It's cheap, fast, and the highest-frequency need.
-Task-quality A/B grading is v2.
+`skillevel` v1 nails **#1** — cheap, fast, the highest-frequency need. v2
+ships **#2** as `skillevel bench`: the same cases, run with and without the
+skill, graded, reported as lift.
 
 ## Positioning
 
@@ -30,15 +31,20 @@ Task-quality A/B grading is v2.
 ```
 skillevel                    # discover & run every eval (**/*.eval.yaml, evals/cases.yaml)
 skillevel sql                # filter to a skill or a file
-skillevel --watch            # re-run on SKILL.md / case changes (inner loop)
 skillevel -t "negative"      # filter by case id/substring
-skillevel --reporter junit   # grid (default) · dot · json · junit
 skillevel --ci               # non-zero exit on any regression / unwritten case
+skillevel --json out.json    # machine-readable results alongside the grid
+skillevel bench sql          # A/B with vs without the skill; report the lift
 skillevel init sql           # scaffold a cases file from the skill (template + guidance)
 skillevel new sql            # scaffold sql/SKILL.md (template + authoring guidance)
 skillevel lint [target...]   # validate SKILL.md files (errors) + guidance heuristics (warnings)
 skillevel fmt [--check]      # conservative SKILL.md frontmatter/whitespace normalizer
 ```
+
+Deliberately **not** in the surface (cut for real-repo ergonomics): `--watch`
+(every re-run costs real dollars and minutes — an accidental save mid-edit
+should not start a run) and the `dot`/`junit` reporters (the grid serves
+humans, `--json` serves machines; nothing consumed the others).
 
 ## Case format (adopted from skill-eval)
 
@@ -55,7 +61,7 @@ cases:
       - triggered
       - match: "SELECT" # case-insensitive regex in the response
       - absent: "DELETE" # regex must NOT appear
-      # - judge: "is the query read-only and correctly scoped?"  # LLM-graded (v1.1)
+      # - judge: "is the query read-only and correctly scoped?"  # LLM-graded
   - id: neg-1
     prompt: "..."
     should_trigger: false
@@ -133,28 +139,27 @@ case has only trigger checks,
   `>= triggerThreshold` (default 0.8), so a single flake doesn't fail it.
 - `--ci` exits non-zero if any case is below threshold or unwritten.
 
-## Which version of the skill is tested (v1 limitation)
+## Which version of the skill is tested (limitation)
 
-v1 tests whatever `claude -p` **already discovers** (installed
+Runs test whatever `claude -p` **already discovers** (installed
 `~/.claude/skills`, project `.claude/skills`, plugins). To test a working-copy
 edit, install/symlink it. **Roadmap:** `--skill-dir <path>` sets up an isolated
 temp project (`.claude/skills/<name>` + `--bare`) so you can eval an uncommitted
-SKILL.md reproducibly, and skill-on/off ablation for task-quality (v2).
+SKILL.md reproducibly.
 
-## Non-goals (v1)
+## Non-goals
 
-- Task-quality A/B grading / lift (v2).
-- Multi-harness (Cursor/Codex/Gemini) — v1 is `claude -p` only.
+- Multi-harness (Cursor/Codex/Gemini) — `claude -p` only.
 - HTML report — terminal + JSON first.
 
 ---
 
-# v2 — task-quality A/B (does the skill actually help?)
+# v2 — task-quality A/B (does the skill actually help?) — SHIPPED
 
 v1 answers _does it trigger_. v2 answers _does it improve the output_ — the
 question that decides whether a skill is worth its tokens, and whether an edit
 made it better. This is the ablation `skill-eval` describes and the A/B loop the
-official `skill-creator` runs, packaged as one command.
+official `skill-creator` runs, packaged as one command: `skillevel bench`.
 
 ## The idea
 
@@ -162,14 +167,15 @@ For each case, run the **same prompt twice** — once with the skill available,
 once without — grade both outputs, and report the **lift**:
 
 ```
-$ skillevel bench sql          # or: skillevel sql --ablate
+$ skillevel bench sql
 
 sql  ./sql.eval.yaml
-  case                 with   without   lift
-  aggregate-revenue    5/5      2/5      +60pp
-  safe-delete          5/5      5/5       0pp     ← model already handles this
+  case                    with   without    lift
+  aggregate-revenue        3/3       1/3   +67pp
+  safe-delete              3/3       3/3     0pp     ← model already handles this
   ...
-  ▲ skill lift: +34pp   (48% → 82%)   $1.10
+
+▲ skill lift: +34pp   (48% → 82%)   4 benched   $1.10
 ```
 
 - lift ≫ 0 → the skill earns its place.
@@ -190,50 +196,43 @@ assertions instead of (or on top of) the trigger check:
     - match: "GROUP BY"
 ```
 
-`judge` is graded PASS/FAIL by an LLM with **quoted evidence** (borrowed from
-`skill-creator`'s grader: burden of proof on the assertion, no partial credit).
-Trigger-only cases are skipped by `bench` — there's nothing to compare.
+`judge` is graded PASS/FAIL by an LLM (burden of proof on the assertion, no
+partial credit). Benchable = `should_trigger: true` **and** at least one output
+check: trigger-only cases have nothing to compare, and a "must not fire" case
+is identical in both arms — both are reported as skipped.
 
 ## The "without skill" arm — the hard part, honestly
 
-Two ways to run the baseline, each with a caveat:
+The shipped baseline is the **blunt** one: `--disallowedTools Skill` blocks
+_all_ skills. Cheap and reliable, but it measures "this skill vs no skills",
+not "vs this one skill removed" — fine when the case wouldn't pull in a
+sibling anyway. **Roadmap (v2.1):** an isolated temp project whose
+`.claude/skills/` contains everything _except_ the skill under test, for true
+per-skill ablation.
 
-1. **Blunt (v2.0):** `--disallowedTools Skill` blocks _all_ skills. Cheap and
-   reliable, but measures "this skill vs no skills", not "vs this one skill
-   removed". Fine when the case wouldn't pull in a sibling anyway.
-2. **Isolated (v2.1):** reuse the v1 `--skill-dir` roadmap — a temp project whose
-   `.claude/skills/` contains everything _except_ the skill under test, run with
-   `--bare`. True per-skill ablation; more setup.
-
-Run the two arms **in the same batch/turn** (as `skill-creator` does) so
-time-of-day and model drift hit both equally.
-
-## Grading & aggregation
-
-- **Grader:** one `claude -p` call per output, model-graded against the case's
-  `judge`/rubric expectations. `match`/`absent` still apply as cheap gates.
-- **Aggregation:** a `benchmark.json` keyed by **config name** (`with_skill` /
-  `without_skill`) rather than hardcoded arms — the same aggregator then also
-  serves **old-vs-new-version** comparison (point one arm at a snapshotted
-  SKILL.md). Report mean ± stddev of pass-rate, plus cost and tokens.
+Both arms run **interleaved in the same batch** (as `skill-creator` does) so
+time-of-day and model drift hit both equally, with no early exit — bench needs
+the full output.
 
 ## CLI surface
 
 ```
-skillevel bench <skill>            # with vs without, report lift
-skillevel bench <skill> --vs <ref> # with vs a snapshotted old version
-skillevel bench <skill> --html     # richer report (optional)
+skillevel bench [target]           # with vs without, report lift
+  --trials <n>                     # per arm; defaults to 3 (each case = 2× runs + grading)
+  --min-lift <pp>                  # CI gate: exit non-zero when lift drops below this
+  --json <file>                    # full A/B results for machines
 ```
 
-Everything else (discovery, `trials`, reporters, `--ci`) carries over
-unchanged. `--ci` on `bench` can gate on "lift must stay ≥ X" to catch a skill
-edit that quietly regresses quality.
+Discovery, `-t` filter, `-m`/`-c`, and the suite `model` carry over from the
+eval runner unchanged. `--min-lift` is how a skill edit that quietly regresses
+quality fails the build.
 
-## Open questions
+## Roadmap / open questions
 
+- **Isolated ablation (v2.1)** — see above; also unlocks evaling an
+  uncommitted SKILL.md reproducibly (`--skill-dir`).
+- **Old-vs-new comparison** (`--vs <ref>`) — point the baseline arm at a
+  snapshotted SKILL.md instead of "no skill".
 - Judge variance — grade N times and vote, or trust one call with evidence?
-- Cost — `bench` is ~2× the runs plus a grader call each; make `trials` default
-  lower for `bench` than for trigger evals.
-- Comparator vs per-output grader — a blind A/B "which is better" (skill-creator's
-  `comparator`) can be more discriminating than independent PASS/FAIL, but is
-  harder to threshold in CI. Start with the grader; add comparator behind a flag.
+- Comparator vs per-output grader — a blind A/B "which is better" can be more
+  discriminating than independent PASS/FAIL, but is harder to threshold in CI.
