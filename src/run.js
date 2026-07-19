@@ -98,18 +98,21 @@ function caseJobs(testCase, suite, model, config, caseResult) {
 }
 
 /**
- * Decide when a run can stop early. Only the trigger verdict allows it — cases
- * with output checks must run to completion.
+ * Decide when a run can stop early — only once the trigger verdict is settled.
+ * Cases with output checks must run to completion.
  *
  * @param {import('./types.js').TestCase} testCase
  * @param {string} skill
  * @returns {(firedSkill: string) => boolean}
  */
 function makeStopPredicate(testCase, skill) {
+  // "no skill may fire": any skill firing settles the verdict (fail fast).
+  if (testCase.expect_skill === "none") return () => true;
   const runToCompletion = testCase.should_trigger && hasOutputChecks(testCase);
   return (firedSkill) => {
-    if (firedSkill !== skill) return false; // other skills don't affect this check
-    // "must not fire" → fail fast; "should fire" (trigger-only) → pass fast
+    // A sibling firing settles nothing — the target could still fire later.
+    if (firedSkill !== skill) return false;
+    // target fired: "must not fire" → fail fast; trigger-only → pass fast
     return !runToCompletion;
   };
 }

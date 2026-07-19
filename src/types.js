@@ -19,11 +19,19 @@
 /**
  * One test case: a prompt plus the behaviour expected of the skill.
  *
+ * A case declares its trigger expectation in one of two ways:
+ * - `should_trigger: true|false` — should the target skill fire?
+ * - `expect_skill: <name>|none` — which skill should win the routing? The
+ *   suite's own skill (≡ `should_trigger: true`), a sibling (the sibling must
+ *   fire and the target must stay out — a collision case), or `none` (no skill
+ *   at all may fire). The loader derives `should_trigger` from it.
+ *
  * @typedef {object} TestCase
  * @property {string} id                     Unique within the suite.
  * @property {string} prompt                 What the user would type. An unfilled
  *                                           `<placeholder>` marks the case as unwritten.
  * @property {boolean} should_trigger        Whether the target skill should fire.
+ * @property {string} [expect_skill]         The skill that should win, or "none".
  * @property {number} [trials]               Per-case override of the suite's trials.
  * @property {Expectation[]} [expect]        Extra assertions beyond the trigger check.
  */

@@ -88,10 +88,17 @@ export function loadSuite(filePath) {
       testCase.prompt,
       `${filePath}: case '${testCase.id}' is missing 'prompt'`,
     );
+    const hasShould = typeof testCase.should_trigger === "boolean";
+    const hasExpectSkill = typeof testCase.expect_skill === "string";
     assert(
-      typeof testCase.should_trigger === "boolean",
-      `${filePath}: case '${testCase.id}' needs 'should_trigger: true|false'`,
+      hasShould !== hasExpectSkill,
+      `${filePath}: case '${testCase.id}' needs exactly one of 'should_trigger: true|false' or 'expect_skill: <skill>|none'`,
     );
+    // The rest of the machinery (turn caps, early exit, labels) keys off
+    // should_trigger; derive it so expect_skill cases flow through unchanged.
+    if (hasExpectSkill) {
+      testCase.should_trigger = testCase.expect_skill === suite.skill;
+    }
     assert(
       !seenIds.has(testCase.id),
       `${filePath}: duplicate case id '${testCase.id}'`,

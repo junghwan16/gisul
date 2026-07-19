@@ -33,7 +33,9 @@ export async function evaluateTrial(testCase, skill, outcome, judgeModel) {
 }
 
 /**
- * The always-present check: did the target skill fire as `should_trigger` says?
+ * The always-present check. With `should_trigger`, did the target skill fire
+ * as declared? With `expect_skill`, did the routing go where it should — to
+ * the named sibling (target staying out) or to no skill at all?
  *
  * @param {import('./types.js').TestCase} testCase
  * @param {string} skill
@@ -41,16 +43,28 @@ export async function evaluateTrial(testCase, skill, outcome, judgeModel) {
  * @returns {import('./types.js').CheckResult}
  */
 function triggerCheck(testCase, skill, outcome) {
-  const fired = outcome.skillsFired.includes(skill);
-  const ok = fired === testCase.should_trigger;
-  return {
-    label: testCase.should_trigger
+  const fired = outcome.skillsFired;
+  const expected = testCase.expect_skill;
+  let label;
+  let ok;
+  if (expected !== undefined && expected !== skill) {
+    if (expected === "none") {
+      label = "no skill fires";
+      ok = fired.length === 0;
+    } else {
+      label = `routes to ${expected}`;
+      ok = fired.includes(expected) && !fired.includes(skill);
+    }
+  } else {
+    label = testCase.should_trigger
       ? `triggers ${skill}`
-      : `stays out (${skill})`,
+      : `stays out (${skill})`;
+    ok = fired.includes(skill) === testCase.should_trigger;
+  }
+  return {
+    label,
     ok,
-    detail: ok
-      ? undefined
-      : `fired: ${outcome.skillsFired.join(", ") || "none"}`,
+    detail: ok ? undefined : `fired: ${fired.join(", ") || "none"}`,
   };
 }
 

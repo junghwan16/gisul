@@ -63,6 +63,11 @@ cases:
 ```
 
 - `should_trigger` is the **primary check**: did the target skill fire?
+- `expect_skill: <name>|none` is the routing form of the primary check: the
+  named skill must win. Naming the suite's own skill ≡ `should_trigger: true`;
+  naming a sibling asserts the collision lands there (sibling fires, target
+  stays out); `none` asserts no skill fires. The loader derives
+  `should_trigger` from it, so both forms share the runner machinery.
 - `triggered` / `not_triggered` in `expect` are redundant shorthands (validated
   against `should_trigger`); `match` / `absent` / `judge` add output checks.
 - A **placeholder prompt** (contains `<...>`) marks the case as _unwritten_ — it

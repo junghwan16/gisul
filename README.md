@@ -117,7 +117,17 @@ cases:
     prompt: "Refactor this Python function"
     should_trigger: false
     expect: [not_triggered]
+  - id: collision-1
+    prompt: "Pull the last hour of adnsvc error logs"
+    expect_skill: log-query # the sibling must win; sql must stay out
 ```
+
+Instead of `should_trigger`, a case may declare `expect_skill: <name>` — which
+skill should win the routing. Naming the suite's own skill means "triggers";
+naming a **sibling** asserts the near-miss lands there (sibling fires, target
+stays out); `expect_skill: none` asserts no skill fires at all. This is how
+you pin down the #1 failure mode of a growing skill collection: two sibling
+skills fighting over the same prompts.
 
 `init` writes example cases as **placeholders** and pulls the skill's own
 trigger keywords into a comment — but it does **not** invent cases for you
@@ -126,13 +136,14 @@ ones, ideally from real usage traces.
 
 ### Expectations
 
-| entry                         | passes when                                         |
-| ----------------------------- | --------------------------------------------------- |
-| `should_trigger`              | the target skill fired (`true`) / did not (`false`) |
-| `triggered` / `not_triggered` | shorthands validated against `should_trigger`       |
-| `match: <re>`                 | the case-insensitive regex appears in the response  |
-| `absent: <re>`                | the regex does **not** appear                       |
-| `judge: <q>`                  | a fresh Claude grades the response `PASS` _(v1.1)_  |
+| entry                         | passes when                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| `should_trigger`              | the target skill fired (`true`) / did not (`false`)                                                |
+| `expect_skill: <name>`        | the named skill fired — and the target stayed out when it names a sibling; `none` = no skill fired |
+| `triggered` / `not_triggered` | shorthands validated against `should_trigger`                                                      |
+| `match: <re>`                 | the case-insensitive regex appears in the response                                                 |
+| `absent: <re>`                | the regex does **not** appear                                                                      |
+| `judge: <q>`                  | a fresh Claude grades the response `PASS` _(v1.1)_                                                 |
 
 A case's score is `passes / trials`; it's green at `>= 0.8` (configurable) so one
 flake doesn't fail it. A prompt with an unfilled `<placeholder>` is reported as
