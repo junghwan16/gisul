@@ -22,7 +22,7 @@ import { initSuite } from "./init.js";
 import { newSkill } from "./scaffold.js";
 import { lintSkillMd } from "./lint.js";
 import { formatSkillMd } from "./fmt.js";
-import { resolveSkillMds } from "./resolve.js";
+import { findSkill, resolveSkillMds } from "./resolve.js";
 import {
   BENCH_TRIALS,
   DEFAULT_CONCURRENCY,
@@ -85,16 +85,9 @@ function main() {
     .action(benchCommand);
 
   program
-    .command("init <skill> [file]")
-    .description(
-      "Scaffold a cases file for a skill (template + guidance; you write the cases)",
-    )
-    .action(initCommand);
-
-  program
     .command("new <skill> [dir]")
     .description(
-      "Scaffold a new skill directory with a starter SKILL.md (template + guidance)",
+      "Scaffold whatever the skill is missing: <skill>/SKILL.md (unless the skill already exists) and <skill>.eval.yaml — templates + guidance; you write the content",
     )
     .action(newCommand);
 
@@ -237,26 +230,9 @@ function writeJson(file, results) {
 }
 
 /**
- * The `init` command.
- *
- * @param {string} skill
- * @param {string} [file]
- * @returns {void}
- */
-function initCommand(skill, file) {
-  try {
-    const { file: created, source } = initSuite(skill, file);
-    console.log(
-      pc.green(`created ${created}`) + pc.dim(`  (skill: ${source})`),
-    );
-    console.log(pc.dim(`edit it, then: skillevel ${skill}`));
-  } catch (error) {
-    exitWith(error);
-  }
-}
-
-/**
- * The `new` command.
+ * The `new` command: one on-ramp. Scaffolds the pieces the skill is missing —
+ * a `SKILL.md` when the skill exists nowhere (locally or installed), and a
+ * cases file when there is none — and skips what's already there.
  *
  * @param {string} skill
  * @param {string} [dir]
@@ -264,11 +240,27 @@ function initCommand(skill, file) {
  */
 function newCommand(skill, dir) {
   try {
-    const { file } = newSkill(skill, dir);
-    console.log(pc.green(`created ${file}`));
+    const existing = findSkill(skill);
+    if (existing) {
+      console.log(
+        pc.dim(`skill exists — ${existing.path} (${existing.source})`),
+      );
+    } else {
+      const { file } = newSkill(skill, dir);
+      console.log(pc.green(`created ${file}`));
+    }
+
+    const evalFile = `${skill}.eval.yaml`;
+    if (fs.existsSync(evalFile)) {
+      console.log(pc.dim(`cases exist — ${evalFile}`));
+    } else {
+      const { file } = initSuite(skill, evalFile);
+      console.log(pc.green(`created ${file}`));
+    }
+
     console.log(
       pc.dim(
-        `edit SKILL.md, then: skillevel init ${skill} && skillevel ${skill}`,
+        `write the content, then: skillevel ${skill}  ·  skillevel bench ${skill}`,
       ),
     );
   } catch (error) {

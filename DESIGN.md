@@ -35,8 +35,7 @@ skillevel -t "negative"      # filter by case id/substring
 skillevel --ci               # non-zero exit on any regression / unwritten case
 skillevel --json out.json    # machine-readable results alongside the grid
 skillevel bench sql          # A/B with vs without the skill; report the lift
-skillevel init sql           # scaffold a cases file from the skill (template + guidance)
-skillevel new sql            # scaffold sql/SKILL.md (template + authoring guidance)
+skillevel new sql            # scaffold what's missing: sql/SKILL.md and/or sql.eval.yaml
 skillevel lint [target...]   # validate SKILL.md files (errors) + guidance heuristics (warnings)
 skillevel fmt [--check]      # conservative SKILL.md frontmatter/whitespace normalizer
 ```
@@ -79,27 +78,33 @@ cases:
 - A **placeholder prompt** (contains `<...>`) marks the case as _unwritten_ — it
   is reported as TODO and fails `--ci`, so `init` output can't silently pass.
 
-## `init` — scaffold, don't generate
+## `new` — one on-ramp; scaffold, don't generate
 
-`init` is **offline and deterministic**. It does NOT ask an LLM to invent cases
-(auto-generated cases plant plausible-but-wrong tests). It:
+There is a single scaffolding command. `skillevel new <skill>` creates
+whatever the skill is missing and skips what already exists:
 
-1. reads the target `SKILL.md` (dev copy in cwd if present, else installed),
-2. pre-fills `skill:` from the frontmatter `name`,
-3. writes example happy + near-miss-negative cases as clearly-marked
-   placeholders, with the authoring principles inline, and
-4. pulls the skill's own **trigger keywords verbatim** into a comment as a hint.
-
-The human writes the real cases — ideally from real usage/production traces.
-
-## Authoring toolchain — `new` / `lint` / `fmt`
-
-The same philosophy as `init`: **offline and deterministic**, templates and
-guidance only — never LLM-invented content.
-
-- `new` writes a starter `SKILL.md` whose placeholders are honest TODOs and
-  whose authoring guidance (triggering description, 500-line limit, progressive
+- **`<skill>/SKILL.md`** — only when no skill by that name exists (locally or
+  installed). A starter whose placeholders are honest TODOs and whose
+  authoring guidance (triggering description, 500-line limit, progressive
   disclosure) rides along as a deletable comment.
+- **`<skill>.eval.yaml`** — the cases file. It reads the target `SKILL.md`
+  (dev copy in cwd if present, else installed), pre-fills `skill:`, writes
+  example happy + near-miss-negative cases as clearly-marked placeholders with
+  the authoring principles inline, and pulls the skill's own **trigger
+  keywords verbatim** into a comment as a hint.
+
+(An earlier split — `init` for the cases file, `new` for the skill — asked
+users to remember which creation verb made which artifact; one idempotent
+command removes the distinction.)
+
+Everything is **offline and deterministic** — it does NOT ask an LLM to invent
+cases or content (auto-generated cases plant plausible-but-wrong tests). The
+human writes the real cases — ideally from real usage/production traces.
+
+## Authoring toolchain — `lint` / `fmt`
+
+The same philosophy: **offline and deterministic**, templates and guidance
+only — never LLM-invented content.
 - `lint` splits its findings by authority: **errors** are the packaging /
   validation rules (ported from skill-creator's `quick_validate.py` — a skill
   that fails them won't install cleanly); **warnings** are authoring guidance

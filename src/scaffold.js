@@ -58,9 +58,9 @@ Authoring guide (delete this comment when done):
   helpers, assets/ for files used in output.
 - Write instructions in imperative form. Explain WHY things matter instead of
   heavy-handed MUSTs — the model reasons better from rationale than rules.
-- After writing, test triggering with:
-    skillevel init ${skill} && skillevel ${skill}
-  and measure whether the skill actually improves the output with:
+- After writing, fill in the cases in ${skill}.eval.yaml and test triggering:
+    skillevel ${skill}
+  then measure whether the skill actually improves the output:
     skillevel bench ${skill}
 -->
 
