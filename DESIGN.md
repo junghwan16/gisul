@@ -120,3 +120,94 @@ SKILL.md reproducibly, and skill-on/off ablation for task-quality (v2).
 - Task-quality A/B grading / lift (v2).
 - Multi-harness (Cursor/Codex/Gemini) — v1 is `claude -p` only.
 - HTML report — terminal + JSON first.
+
+---
+
+# v2 — task-quality A/B (does the skill actually help?)
+
+v1 answers _does it trigger_. v2 answers _does it improve the output_ — the
+question that decides whether a skill is worth its tokens, and whether an edit
+made it better. This is the ablation `skill-eval` describes and the A/B loop the
+official `skill-creator` runs, packaged as one command.
+
+## The idea
+
+For each case, run the **same prompt twice** — once with the skill available,
+once without — grade both outputs, and report the **lift**:
+
+```
+$ skillevel bench sql          # or: skillevel sql --ablate
+
+sql  ./sql.eval.yaml
+  case                 with   without   lift
+  aggregate-revenue    5/5      2/5      +60pp
+  safe-delete          5/5      5/5       0pp     ← model already handles this
+  ...
+  ▲ skill lift: +34pp   (48% → 82%)   $1.10
+```
+
+- lift ≫ 0 → the skill earns its place.
+- lift ≈ 0 across the board → **retire candidate** (the model already does it);
+  keep the cases as a regression guard, per `skill-eval`.
+
+## Cases
+
+No new file format — a v2 case is a v1 case whose `expect` carries **output**
+assertions instead of (or on top of) the trigger check:
+
+```yaml
+- id: aggregate-revenue
+  prompt: "What was revenue by month last quarter?"
+  should_trigger: true
+  expect:
+    - judge: "Produces a correct GROUP BY month aggregate, read-only"
+    - match: "GROUP BY"
+```
+
+`judge` is graded PASS/FAIL by an LLM with **quoted evidence** (borrowed from
+`skill-creator`'s grader: burden of proof on the assertion, no partial credit).
+Trigger-only cases are skipped by `bench` — there's nothing to compare.
+
+## The "without skill" arm — the hard part, honestly
+
+Two ways to run the baseline, each with a caveat:
+
+1. **Blunt (v2.0):** `--disallowedTools Skill` blocks _all_ skills. Cheap and
+   reliable, but measures "this skill vs no skills", not "vs this one skill
+   removed". Fine when the case wouldn't pull in a sibling anyway.
+2. **Isolated (v2.1):** reuse the v1 `--skill-dir` roadmap — a temp project whose
+   `.claude/skills/` contains everything _except_ the skill under test, run with
+   `--bare`. True per-skill ablation; more setup.
+
+Run the two arms **in the same batch/turn** (as `skill-creator` does) so
+time-of-day and model drift hit both equally.
+
+## Grading & aggregation
+
+- **Grader:** one `claude -p` call per output, model-graded against the case's
+  `judge`/rubric expectations. `match`/`absent` still apply as cheap gates.
+- **Aggregation:** a `benchmark.json` keyed by **config name** (`with_skill` /
+  `without_skill`) rather than hardcoded arms — the same aggregator then also
+  serves **old-vs-new-version** comparison (point one arm at a snapshotted
+  SKILL.md). Report mean ± stddev of pass-rate, plus cost and tokens.
+
+## CLI surface
+
+```
+skillevel bench <skill>            # with vs without, report lift
+skillevel bench <skill> --vs <ref> # with vs a snapshotted old version
+skillevel bench <skill> --html     # richer report (optional)
+```
+
+Everything else (discovery, `trials`, reporters, `--ci`) carries over
+unchanged. `--ci` on `bench` can gate on "lift must stay ≥ X" to catch a skill
+edit that quietly regresses quality.
+
+## Open questions
+
+- Judge variance — grade N times and vote, or trust one call with evidence?
+- Cost — `bench` is ~2× the runs plus a grader call each; make `trials` default
+  lower for `bench` than for trigger evals.
+- Comparator vs per-output grader — a blind A/B "which is better" (skill-creator's
+  `comparator`) can be more discriminating than independent PASS/FAIL, but is
+  harder to threshold in CI. Start with the grader; add comparator behind a flag.

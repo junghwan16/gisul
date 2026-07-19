@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/cli.js",
+    "smoke": "node src/cli.js --version && node src/cli.js __no_such_skill__",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -29,6 +30,18 @@
     "agent"
   ],
   "license": "MIT",
+  "author": "junghwan16",
+  "homepage": "https://github.com/junghwan16/skillevel#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/junghwan16/skillevel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/junghwan16/skillevel/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "commander": "^12.1.0",
     "picocolors": "^1.1.1",

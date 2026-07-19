@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      # Offline smoke only: `--version` + a no-match run exercise the whole
+      # module graph and CLI without a `claude` login. The real trigger eval
+      # (which shells out to `claude -p`) runs locally, not in CI.
+      - run: npm run smoke

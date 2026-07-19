@@ -1,5 +1,9 @@
 # skillevel
 
+[![npm](https://img.shields.io/npm/v/skillevel.svg)](https://www.npmjs.com/package/skillevel)
+[![CI](https://github.com/junghwan16/skillevel/actions/workflows/ci.yml/badge.svg)](https://github.com/junghwan16/skillevel/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 A test runner for **Claude Code skills** — `vitest`, but a "test" is a prompt
 and the thing under test is whether a skill **triggers** (and behaves) the way
 its author intended.
@@ -26,13 +30,20 @@ trials, from a YAML file you can write in a minute.
 
 ## Install
 
-Requires [Claude Code](https://claude.com/claude-code) on your `PATH` and Node
-≥ 18.
+Requires [Claude Code](https://claude.com/claude-code) on your `PATH` (the
+`claude` CLI) and Node ≥ 18.
 
 ```bash
-npm install && npm run build && npm link   # global `skillevel`
-# or, no build:
-npm run dev -- <args>
+npx skillevel@latest init <skill>   # zero-install
+npm install -g skillevel            # or install the `skillevel` command
+```
+
+From source (there's no build step — it's plain ESM):
+
+```bash
+git clone https://github.com/junghwan16/skillevel && cd skillevel
+npm install
+node src/cli.js <args>              # or `npm link` for a global `skillevel`
 ```
 
 ## Use
