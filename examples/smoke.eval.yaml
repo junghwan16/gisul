@@ -1,0 +1,12 @@
+# Cheapest suite — validates the runner end-to-end with no real skill.
+skill: __none__
+model: haiku
+trials: 1
+
+cases:
+  - id: plain
+    prompt: "Reply with exactly the word: ok"
+    should_trigger: false
+    expect:
+      - not_triggered
+      - match: "ok"

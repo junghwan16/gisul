@@ -1,0 +1,32 @@
+# Example suite (illustrative). A made-up `sql` skill that writes and runs
+# read-only SQL against a database.
+skill: sql
+model: sonnet
+trials: 5
+
+cases:
+  # -- happy: should fire and produce SQL --------------------------------
+  - id: happy-recent-orders
+    prompt: "Show the 10 most recent orders from the database"
+    should_trigger: true
+    expect:
+      - triggered
+      - match: "SELECT"
+
+  - id: happy-count-signups
+    prompt: "How many users signed up last week? Query the db."
+    should_trigger: true
+    expect:
+      - triggered
+      - match: "COUNT|GROUP BY"
+
+  # -- negative: near-misses that must NOT fire --------------------------
+  - id: neg-concept
+    prompt: "What's the difference between an inner and outer join?"
+    should_trigger: false
+    expect: [not_triggered]
+
+  - id: neg-refactor
+    prompt: "Refactor this Python function to be more readable"
+    should_trigger: false
+    expect: [not_triggered]
