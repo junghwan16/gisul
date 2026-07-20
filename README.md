@@ -4,16 +4,19 @@
 [![CI](https://github.com/junghwan16/gisul/actions/workflows/ci.yml/badge.svg)](https://github.com/junghwan16/gisul/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**A test runner for Claude Code skills.** Think `vitest`, but a "test" is a
-prompt, and the thing under test is your skill's behaviour:
+**A framework for authoring and testing Claude Code skills.** A skill is just
+markdown and YAML, but getting one right takes two different disciplines:
 
-- **Does it trigger?** — fires on the prompts it should, stays out of the
-  near-misses it shouldn't. Skills are prompt-triggered and non-deterministic;
-  this is the #1 thing that breaks when you write or edit one.
-- **Does it help?** — the same prompt answered better _with_ the skill than
-  without. If not, the skill isn't earning its tokens.
+- **Write it well** — `new` scaffolds a `SKILL.md` and its eval cases, `lint`
+  catches what would break packaging, `fmt` keeps frontmatter tidy. All
+  offline, deterministic, free.
+- **Prove it works** — think `vitest`, but a "test" is a prompt and the thing
+  under test is the skill's behaviour. **Does it trigger?** — fires on the
+  prompts it should, stays out of the near-misses it shouldn't. **Does it
+  help?** — the same prompt answered better _with_ the skill than without.
+  `run`/`validate` and `bench` answer both by running cases through `claude -p`.
 
-You describe both in a small YAML file; `gisul` runs each case repeatedly
+You describe cases in a small YAML file; `gisul` runs each one repeatedly
 through `claude -p`, scores the pass-rate, and prints a familiar test report:
 
 ```bash
@@ -29,13 +32,10 @@ sql  ./sql.eval.yaml
 1 failed · 2 passed · 1 todo   $0.21
 ```
 
-It also covers the write side of the loop: `new` scaffolds a `SKILL.md`,
-`lint` and `fmt` keep it valid and tidy — all offline and deterministic.
-
 ## Quick start
 
 Requires [Claude Code](https://claude.com/claude-code) on your `PATH` (the
-`claude` CLI, logged in) and Node ≥ 18. No install needed — `npx` works, or
+`claude` CLI, logged in) and Node ≥ 20. No install needed — `npx` works, or
 `npm i -g gisul` for a global command.
 
 Say your team keeps a `sql` skill that writes queries against your warehouse
@@ -93,12 +93,12 @@ npx gisul bench sql
 
 | command                   | what it does                                                           |
 | ------------------------- | ---------------------------------------------------------------------- |
-| `gisul [target]`          | run eval suites — all discovered, or one skill / file                  |
-| `gisul bench [target]`    | A/B each case with vs without the skill; report the lift               |
-| `gisul validate [target]` | offline: parse suites, report schema errors, preview run cost          |
 | `gisul new <skill>`       | scaffold what's missing: `<skill>/SKILL.md` and/or `<skill>.eval.yaml` |
 | `gisul lint [targets…]`   | validate `SKILL.md` files (packaging errors + guidance warnings)       |
 | `gisul fmt [targets…]`    | normalize `SKILL.md` frontmatter/whitespace (`--check` to only report) |
+| `gisul [target]`          | run eval suites — all discovered, or one skill / file                  |
+| `gisul validate [target]` | offline: parse suites, report schema errors, preview run cost          |
+| `gisul bench [target]`    | A/B each case with vs without the skill; report the lift               |
 
 Useful flags on runs: `-t <substr>` filters cases by id, `-m <model>`
 overrides the model, `--trials <n>` overrides the suite's trial count (to bound

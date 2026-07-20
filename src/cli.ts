@@ -39,7 +39,7 @@ function main(): void {
   program
     .name("gisul")
     .description(
-      "A test runner for Claude Code skills. Runs YAML cases through `claude -p`.",
+      "A framework for authoring and testing Claude Code skills: scaffold, lint, and format SKILL.md files; run YAML cases through `claude -p` to check triggering and measure lift.",
     )
     .version(version);
 

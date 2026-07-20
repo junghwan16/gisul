@@ -1,7 +1,7 @@
 {
   "name": "gisul",
   "version": "1.0.1",
-  "description": "A test runner and authoring toolchain for Claude Code skills — vitest for skills. Scaffold, lint, and format SKILL.md files, run YAML cases through `claude -p` to check that each skill triggers the way it should, and bench the skill-on/off lift to see if it actually helps.",
+  "description": "A framework for authoring and testing Claude Code skills. Scaffold, lint, and format SKILL.md files, run YAML cases through `claude -p` to check that each skill triggers the way it should, and bench the skill-on/off lift to see if it actually helps.",
   "type": "module",
   "bin": {
     "gisul": "dist/cli.js"
@@ -29,6 +29,7 @@
     "claude",
     "claude-code",
     "skills",
+    "framework",
     "eval",
     "test-runner",
     "llm",
