@@ -57,3 +57,27 @@ export function reportError(io: CommandIo, error: unknown): number {
   io.err(pc.red((error as Error).message));
   return 1;
 }
+
+/**
+ * Isolated runs pin their working directory to a materialized temp project,
+ * so a suite/case `cwd:` cannot be honoured. Report each offender and return
+ * whether any were found — silently mis-running them would be worse than
+ * refusing.
+ */
+export function rejectSuiteCwds(
+  io: CommandIo,
+  suites: Suite[],
+  flag: string,
+): boolean {
+  const offenders = suites.filter(
+    (suite) => suite.cwd || suite.cases.some((testCase) => testCase.cwd),
+  );
+  for (const suite of offenders) {
+    io.err(
+      pc.red(
+        `${suite.file}: 'cwd:' conflicts with ${flag} — isolated runs pin their own working directory`,
+      ),
+    );
+  }
+  return offenders.length > 0;
+}

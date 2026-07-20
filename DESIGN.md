@@ -149,9 +149,8 @@ case has only trigger checks,
 
 Runs test whatever `claude -p` **already discovers** (installed
 `~/.claude/skills`, project `.claude/skills`, plugins). To test a working-copy
-edit, install/symlink it. **Roadmap:** `--skill-dir <path>` sets up an isolated
-temp project (`.claude/skills/<name>` + `--bare`) so you can eval an uncommitted
-SKILL.md reproducibly.
+edit without installing it, pass `--skill-dir <path>` — shipped in v2.1, see
+below.
 
 ## Non-goals
 
@@ -209,12 +208,11 @@ is identical in both arms — both are reported as skipped.
 
 ## The "without skill" arm — the hard part, honestly
 
-The shipped baseline is the **blunt** one: `--disallowedTools Skill` blocks
+The default baseline is the **blunt** one: `--disallowedTools Skill` blocks
 _all_ skills. Cheap and reliable, but it measures "this skill vs no skills",
 not "vs this one skill removed" — fine when the case wouldn't pull in a
-sibling anyway. **Roadmap (v2.1):** an isolated temp project whose
-`.claude/skills/` contains everything _except_ the skill under test, for true
-per-skill ablation.
+sibling anyway. `--isolate` (shipped in v2.1, see below) runs the true
+per-skill ablation instead.
 
 Both arms run **interleaved in the same batch** (as `skill-creator` does) so
 time-of-day and model drift hit both equally, with no early exit — bench needs
@@ -235,10 +233,8 @@ quality fails the build.
 
 ## Roadmap / open questions
 
-- **Isolated ablation (v2.1)** — see above; also unlocks evaling an
-  uncommitted SKILL.md reproducibly (`--skill-dir`).
-- **Old-vs-new comparison** (`--vs <ref>`) — point the baseline arm at a
-  snapshotted SKILL.md instead of "no skill".
+- **Old-vs-new comparison** (`--vs <ref>`) — shipped in v2.2, see below. PRD:
+  [docs/prd-bench-vs.md](./docs/prd-bench-vs.md).
 - Judge variance — grade N times and vote, or trust one call with evidence?
 - Comparator vs per-output grader — a blind A/B "which is better" can be more
   discriminating than independent PASS/FAIL, but is harder to threshold in CI.
@@ -338,12 +334,95 @@ Also closed: the invisible `expect_skill` "sibling must actually fire" semantic
   exists to _detect_ — but it means `review-pr`'s suite only goes fully green in
   an environment without a rival diff-reviewer. The real fix belongs to the
   skills (sharper boundaries), which is a lesson worth leaving in the example.
-- **Isolated ablation / `--skill-dir` (v2.1)** — still the biggest gap: eval an
-  uncommitted or in-repo `SKILL.md` reproducibly, and ablate a _single_ skill
-  rather than blocking all skills. Would also let the example suites run without
-  a manual symlink into `~/.claude/skills`.
 - **Cost precision** — `≥ $X` is honest but coarse; estimating early-exit spend
   from `num_turns` would tighten it.
+
+(The other gap this pass left open — isolated ablation / `--skill-dir` — is
+closed by v2.1 below.)
+
+---
+
+# v2.1 — isolated ablation & `--skill-dir` — SHIPPED
+
+One primitive, two features. `suite/isolate.ts` materializes a chosen set of
+skills into a throwaway temp project (`<tmp>/.claude/skills/<name>/…`, copies
+with symlinks dereferenced); runs then use that project as their cwd with
+`--setting-sources project`, so `claude -p` discovers **exactly** the
+materialized set — not `~/.claude/skills`, not plugin skills.
+
+The flag choice was verified empirically, not from docs (the docs don't say):
+with a decoy skill installed in `~/.claude/skills` and another in a temp
+project's `.claude/skills`, a plain run lists both; under
+`--setting-sources project` only the project skill remains, and OAuth keeps
+working. `--bare` — the flag this doc originally penciled in — turned out to
+be the wrong tool: it disables skill _auto-discovery_ entirely (skills only
+resolve when explicitly invoked, useless for trigger evals) and restricts
+auth to `ANTHROPIC_API_KEY`.
+
+On top of the primitive:
+
+- **`run [target] --skill-dir <path>`** — eval an uncommitted working copy
+  (a skill dir or its `SKILL.md`) reproducibly. The materialized project
+  holds every discoverable skill, with the working copy overriding its
+  installed namesake, so `expect_skill` routing/collision cases keep working.
+- **`bench [target] --isolate`** — true per-skill ablation: the "with" arm's
+  project holds every skill, the "without" arm's every skill _except_ the
+  target, and the Skill tool stays available in both — siblings are free to
+  fire, so the lift no longer conflates "this skill" with "any skill".
+- **`bench --skill-dir <path>`** — implies `--isolate` with the working copy
+  as the target: A/B an edit before installing it.
+
+Details that mattered:
+
+- **Skills are keyed by frontmatter `name`, not folder name.** Dogfooding
+  caught this: a working copy in `wip-skill/` slipped back into the ablated
+  arm under its folder name, and the e2e lift read 0pp; keying by the name
+  the Skill tool actually matches on fixed it (+100pp on the same case).
+- **Isolated runs refuse suites that declare `cwd:`** — a repo-context
+  fixture and isolation both want to own the working directory, and silently
+  mis-running one of them is worse than a clear error. Composing the two is
+  still open (below).
+- Temp projects are removed in a per-run `finally`; the with-arm project is
+  shared across suites, the without-arm is materialized per target skill.
+
+Open: composing `--skill-dir` with `cwd:` fixtures (a repo-context skill
+edit currently still needs the manual symlink), and ablating plugin-provided
+skills (they can't be materialized as project skills).
+
+---
+
+# v2.2 — `bench --vs <ref>`: did this edit improve the skill? — SHIPPED
+
+The PRD ([docs/prd-bench-vs.md](./docs/prd-bench-vs.md)) sequenced this on
+purpose: land the isolation primitive first, then build the old side on top
+of it. That's exactly how it shipped — the bench runner needed **zero
+changes**: `--vs` is just a different way of building the two `ArmProjects`.
+
+- `suite/snapshot.ts` materializes the version of a skill dir at any git ref
+  into a temp dir (`git ls-tree -r` + `git show <ref>:<path>`, every file
+  under the dir — SKILL.md, `references/`, scripts). A file added since the
+  ref is simply absent, which is correct: that's part of what changed. The
+  old version doesn't need to be installed — or to still exist on disk.
+- The "new" arm's project holds every discoverable skill with the current
+  (or `--skill-dir`) target; the "old" arm's is identical except the target
+  is replaced by its snapshot. Siblings are the same in both arms, both arms
+  run isolated (`--setting-sources project`) and interleaved in one batch,
+  and the Skill tool stays available — only the skill's own text varies.
+- Report relabels to `old / new / delta` with the ref in the suite header;
+  the summary reads `▲/▼ improvement: ±NNpp (old% → new%) … K compared`. A
+  regression paints red, per the PRD.
+- `--min-improvement <pp>` gates CI like `--min-lift` does (the PRD's
+  "vs. previous version" gate); `--json` results carry
+  `mode: "vs-ref" | "ablate" | "vs-baseline"` (+ `ref`) so machine consumers
+  can't misread which baseline produced the numbers.
+- Clear failures per the PRD: outside a git working tree, an unknown ref
+  (git's own reason quoted), and a skill that didn't exist at the ref
+  (`skill 'x' did not exist at '<ref>'`).
+
+PRD open questions resolved pragmatically: no ref default (explicit `--vs
+HEAD` for "vs last commit" — matches `git diff HEAD` framing without
+guessing), trials keep bench's default of 3 per arm, references-only edits
+always re-bench (no skip-if-unchanged heuristic).
 
 ## Code layout (TypeScript)
 

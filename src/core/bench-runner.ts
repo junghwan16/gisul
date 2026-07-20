@@ -1,7 +1,9 @@
 /**
  * The A/B runner: each benchable case runs the same prompt with the skill
- * available and with all skills blocked (`--disallowedTools Skill`), grades
- * both outputs on the case's output checks, and reports the lift.
+ * available and without it, grades both outputs on the case's output checks,
+ * and reports the lift. The "without" arm blocks all skills by default
+ * (`--disallowedTools Skill`); with `isolation` set it instead runs in a
+ * materialized project missing only the target skill — per-skill ablation.
  *
  * Only happy cases with output checks (`match` / `absent` / `judge`) are
  * benchable — a trigger-only case has nothing to compare, and a "must not
@@ -23,6 +25,14 @@ import { isBenchable, isUnwritten } from "./test-case.js";
 import type { Suite, TestCase } from "./types.js";
 import { runPool, type Job, type ProgressFn } from "../shared/pool.js";
 
+/** The two materialized projects an isolated A/B runs in. */
+export interface ArmProjects {
+  /** Project holding every skill, including the target. */
+  withCwd: string;
+  /** Project holding every skill except the target — true per-skill ablation. */
+  withoutCwd: string;
+}
+
 /** Bench configuration. */
 export interface BenchConfig {
   /** Trials per arm (default {@link BENCH_TRIALS}). */
@@ -31,6 +41,14 @@ export interface BenchConfig {
   /** Overrides each suite's model. */
   model?: string;
   timeoutMs?: number;
+  /**
+   * Per-skill ablation: resolve a suite's skill to its two materialized
+   * projects (see `suite/isolate.ts`). When set, both arms run with discovery
+   * restricted to their project and the Skill tool stays available — the
+   * "without" arm loses only the target, not its siblings. Callers must
+   * reject suites that declare their own `cwd` first.
+   */
+  isolation?: (skill: string) => ArmProjects;
   onProgress?: ProgressFn;
 }
 
@@ -95,7 +113,8 @@ export async function benchSuites(
         caseResult.status = "skipped";
         continue;
       }
-      const cwd = resolveCwd(suite, testCase);
+      const projects = config.isolation?.(suite.skill);
+      const cwd = projects ? undefined : resolveCwd(suite, testCase);
       const arm = (withoutSkill: boolean) =>
         armJob(
           testCase,
@@ -105,7 +124,12 @@ export async function benchSuites(
           config,
           caseResult,
           withoutSkill,
-          cwd,
+          projects
+            ? withoutSkill
+              ? projects.withoutCwd
+              : projects.withCwd
+            : cwd,
+          projects !== undefined,
         );
       for (let trial = 0; trial < trials; trial += 1) {
         // Interleave the arms so drift hits both equally.
@@ -132,6 +156,7 @@ function armJob(
   caseResult: BenchCaseResult,
   withoutSkill: boolean,
   cwd: string | undefined,
+  isolated: boolean,
 ): Job {
   return async () => {
     const outcome = await runner.run(testCase.prompt, {
@@ -139,7 +164,10 @@ function armJob(
       maxTurns: HAPPY_MAX_TURNS, // no early exit — bench needs the full output
       timeoutMs: config.timeoutMs ?? RUN_TIMEOUT_MS,
       cwd,
-      disallowSkills: withoutSkill,
+      // Isolated ablation removes the target from the "without" project
+      // instead of blocking the Skill tool — siblings stay free to fire.
+      disallowSkills: isolated ? undefined : withoutSkill,
+      isolate: isolated ? true : undefined,
     });
     const checks = await evaluateOutputChecks(testCase, outcome, judge);
     if (checks.every((check) => check.ok)) {

@@ -31,6 +31,12 @@ export interface RunConfig {
   /** Overrides each suite's/case's trials. */
   trials?: number;
   timeoutMs?: number;
+  /**
+   * Run every case inside this materialized project (see `suite/isolate.ts`)
+   * with discovery restricted to it. Callers must reject suites that declare
+   * their own `cwd` first — isolation pins the working directory.
+   */
+  isolation?: { cwd: string };
   onProgress?: ProgressFn;
 }
 
@@ -85,7 +91,7 @@ function caseJobs(
   const maxTurns = testCase.should_trigger
     ? HAPPY_MAX_TURNS
     : NEGATIVE_MAX_TURNS;
-  const cwd = resolveCwd(suite, testCase);
+  const cwd = config.isolation?.cwd ?? resolveCwd(suite, testCase);
   const judge = createJudge(runner, model);
 
   return Array.from({ length: trials }, () => async () => {
@@ -94,6 +100,7 @@ function caseJobs(
       maxTurns,
       timeoutMs: config.timeoutMs ?? RUN_TIMEOUT_MS,
       cwd,
+      isolate: config.isolation ? true : undefined,
       stopOnSkill,
     });
     const checks = await evaluateTrial(testCase, suite.skill, outcome, judge);

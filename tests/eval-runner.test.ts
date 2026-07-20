@@ -111,6 +111,19 @@ describe("runSuites", () => {
       [3, 3],
     ]);
   });
+
+  it("isolation pins every run to the materialized project", async () => {
+    const runner = constantRunner(outcome({ skillsFired: ["sql"] }));
+    await runSuites(
+      [suite([{ id: "a", prompt: "p", should_trigger: true, cwd: "fixture" }])],
+      runner,
+      { trials: 2, isolation: { cwd: "/tmp/isolated" } },
+    );
+    for (const call of runner.calls) {
+      expect(call.options.cwd).toBe("/tmp/isolated");
+      expect(call.options.isolate).toBe(true);
+    }
+  });
 });
 
 describe("makeStopPredicate", () => {

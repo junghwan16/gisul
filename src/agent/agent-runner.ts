@@ -23,6 +23,12 @@ export interface AgentRunOptions {
    */
   disallowSkills?: boolean;
   /**
+   * Restrict discovery to the project at `cwd` (`--setting-sources project`),
+   * so an isolated run sees exactly the skills materialized there — not the
+   * installed `~/.claude/skills` or plugin skills.
+   */
+  isolate?: boolean;
+  /**
    * Called each time a skill fires; return `true` to end the run early. Used
    * to avoid paying for a whole turn when only the trigger verdict matters.
    */

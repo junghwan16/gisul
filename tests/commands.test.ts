@@ -3,6 +3,7 @@
  * runner, in-memory io — exactly what a user sees, minus the `claude` spend.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -95,6 +96,46 @@ describe("runCommand", () => {
     expect(await runCommand(undefined, {}, ctx)).toBe(1);
     expect(ctx.io.stderr).toContain("`claude` CLI not found");
   });
+
+  it("--skill-dir evals the working copy in an isolated project, then cleans up", async () => {
+    writeSuite("sql.eval.yaml", SUITE);
+    // Folder named differently from the skill — the frontmatter name wins.
+    fs.mkdirSync(path.join(dir, "wip"));
+    fs.writeFileSync(
+      path.join(dir, "wip", "SKILL.md"),
+      "---\nname: sql\ndescription: d\n---\nbody\n",
+    );
+    const seen: string[] = [];
+    const runner = new FakeRunner((_prompt, options) => {
+      seen.push(options.cwd!);
+      const materialized = fs.existsSync(
+        path.join(options.cwd!, ".claude", "skills", "sql", "SKILL.md"),
+      );
+      return outcome({
+        skillsFired: materialized && options.isolate ? ["sql"] : [],
+      });
+    });
+    const ctx = testContext(runner);
+    expect(await runCommand(undefined, { skillDir: "wip" }, ctx)).toBe(0);
+    expect(ctx.io.stdout).toContain("1 passed");
+    expect(fs.existsSync(seen[0]!)).toBe(false); // temp project removed
+  });
+
+  it("--skill-dir refuses suites that declare their own cwd", async () => {
+    writeSuite("sql.eval.yaml", `cwd: .\n${SUITE}`);
+    fs.mkdirSync(path.join(dir, "sql-skill"));
+    fs.writeFileSync(path.join(dir, "sql-skill", "SKILL.md"), "x");
+    const ctx = testContext(constantRunner(outcome()));
+    expect(await runCommand(undefined, { skillDir: "sql-skill" }, ctx)).toBe(1);
+    expect(ctx.io.stderr).toContain("conflicts with --skill-dir");
+  });
+
+  it("--skill-dir reports a bad path cleanly", async () => {
+    writeSuite("sql.eval.yaml", SUITE);
+    const ctx = testContext(constantRunner(outcome()));
+    expect(await runCommand(undefined, { skillDir: "missing" }, ctx)).toBe(1);
+    expect(ctx.io.stderr).toContain("no SKILL.md");
+  });
 });
 
 describe("benchCommand", () => {
@@ -132,6 +173,115 @@ describe("benchCommand", () => {
     const ctx = testContext(constantRunner(outcome()));
     expect(await benchCommand(undefined, { minLift: 1 }, ctx)).toBe(1);
     expect(ctx.io.stdout).toContain("nothing to bench");
+  });
+
+  it("--isolate ablates only the target skill and cleans up its projects", async () => {
+    writeSuite("sql.eval.yaml", BENCH_SUITE);
+    fs.mkdirSync(path.join(dir, "sql"));
+    fs.writeFileSync(path.join(dir, "sql", "SKILL.md"), "the skill");
+    const seen = new Set<string>();
+    const runner = new FakeRunner((_prompt, options) => {
+      seen.add(options.cwd!);
+      expect(options.disallowSkills).toBeUndefined();
+      const hasTarget = fs.existsSync(
+        path.join(options.cwd!, ".claude", "skills", "sql", "SKILL.md"),
+      );
+      return outcome({ text: hasTarget ? "SELECT 1" : "dunno" });
+    });
+    const ctx = testContext(runner);
+    expect(
+      await benchCommand(undefined, { isolate: true, trials: 2 }, ctx),
+    ).toBe(0);
+    expect(ctx.io.stdout).toContain("isolated ablation");
+    expect(ctx.io.stdout).toContain("+100pp");
+    expect(seen.size).toBe(2); // one project per arm
+    for (const cwd of seen) expect(fs.existsSync(cwd)).toBe(false);
+  });
+
+  it("--isolate fails clearly when the target skill cannot be found", async () => {
+    writeSuite(
+      "zz.eval.yaml",
+      BENCH_SUITE.replace("skill: sql", "skill: zz-no-such-skill"),
+    );
+    const ctx = testContext(constantRunner(outcome()));
+    expect(await benchCommand(undefined, { isolate: true }, ctx)).toBe(1);
+    expect(ctx.io.stderr).toContain("nothing to ablate");
+  });
+
+  function gitHere(...args: string[]): void {
+    execFileSync(
+      "git",
+      ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", ...args],
+      { stdio: "pipe" },
+    );
+  }
+
+  /** A committed old version of `sql/SKILL.md`, then a working-copy edit. */
+  function writeEditedSkillRepo(): void {
+    writeSuite("sql.eval.yaml", BENCH_SUITE);
+    fs.mkdirSync(path.join(dir, "sql"));
+    fs.writeFileSync(path.join(dir, "sql", "SKILL.md"), "old instructions");
+    gitHere("init", "-q");
+    gitHere("add", "-A");
+    gitHere("commit", "-q", "-m", "old");
+    fs.writeFileSync(path.join(dir, "sql", "SKILL.md"), "new instructions");
+  }
+
+  /** Passes only in arms whose materialized target SKILL.md matches `winner`. */
+  function versionSensitiveRunner(winner: string): FakeRunner {
+    return new FakeRunner((_prompt, options) => {
+      expect(options.disallowSkills).toBeUndefined();
+      expect(options.isolate).toBe(true);
+      const skillMd = path.join(
+        options.cwd!,
+        ".claude",
+        "skills",
+        "sql",
+        "SKILL.md",
+      );
+      const body = fs.existsSync(skillMd)
+        ? fs.readFileSync(skillMd, "utf8")
+        : "";
+      return outcome({ text: body.includes(winner) ? "SELECT 1" : "dunno" });
+    });
+  }
+
+  it("--vs benches the working copy against the snapshot at a ref", async () => {
+    writeEditedSkillRepo();
+    const runner = versionSensitiveRunner("new");
+    const ctx = testContext(runner);
+    expect(await benchCommand(undefined, { vs: "HEAD", trials: 2 }, ctx)).toBe(
+      0,
+    );
+    expect(ctx.io.stdout).toContain("old vs new");
+    expect(ctx.io.stdout).toContain("old: HEAD");
+    expect(ctx.io.stdout).toContain("improvement");
+    expect(ctx.io.stdout).toContain("+100pp");
+    const cwds = new Set(runner.calls.map((c) => c.options.cwd!));
+    expect(cwds.size).toBe(2); // one project per version
+    for (const cwd of cwds) expect(fs.existsSync(cwd)).toBe(false);
+  });
+
+  it("--min-improvement fails the run when the edit regressed", async () => {
+    writeEditedSkillRepo();
+    const ctx = testContext(versionSensitiveRunner("old"));
+    expect(
+      await benchCommand(
+        undefined,
+        { vs: "HEAD", trials: 1, minImprovement: 0 },
+        ctx,
+      ),
+    ).toBe(1);
+    expect(ctx.io.stdout).toContain("-100pp");
+  });
+
+  it("--vs outside a git repo fails cleanly", async () => {
+    writeSuite("sql.eval.yaml", BENCH_SUITE);
+    fs.mkdirSync(path.join(dir, "sql"));
+    fs.writeFileSync(path.join(dir, "sql", "SKILL.md"), "x");
+    const ctx = testContext(constantRunner(outcome()));
+    expect(await benchCommand(undefined, { vs: "HEAD" }, ctx)).toBe(1);
+    expect(ctx.io.stderr).toContain("not inside a git working tree");
   });
 });
 

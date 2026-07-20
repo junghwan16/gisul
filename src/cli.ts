@@ -66,6 +66,10 @@ function main(): void {
     )
     .option("--json <file>", "also write full results as JSON to a file")
     .option("--ci", "exit non-zero on any failure or unwritten case")
+    .option(
+      "--skill-dir <path>",
+      "eval the working-copy skill at <path> (a skill dir or its SKILL.md) in an isolated temp project — no install/symlink needed",
+    )
     .action(async (target: string | undefined, options: RawOptions) => {
       process.exitCode = await runCommand(
         target,
@@ -77,6 +81,7 @@ function main(): void {
           trials: asNumber(options.trials),
           json: asString(options.json),
           ci: Boolean(options.ci),
+          skillDir: asString(options.skillDir),
         },
         ctx,
       );
@@ -100,6 +105,22 @@ function main(): void {
       "--min-lift <pp>",
       "exit non-zero when overall lift is below this many percentage points",
     )
+    .option(
+      "--isolate",
+      "true per-skill ablation: both arms run in isolated temp projects; the without arm keeps every skill except the target",
+    )
+    .option(
+      "--skill-dir <path>",
+      "bench the working-copy skill at <path> instead of the installed one (implies --isolate)",
+    )
+    .option(
+      "--vs <ref>",
+      "old vs new: bench the current skill against its version at a git ref (branch, tag, SHA, HEAD~1) — did the edit improve it?",
+    )
+    .option(
+      "--min-improvement <pp>",
+      "with --vs: exit non-zero when the delta is below this many percentage points",
+    )
     .action(async (target: string | undefined, options: RawOptions) => {
       process.exitCode = await benchCommand(
         target,
@@ -110,6 +131,10 @@ function main(): void {
           trials: asNumber(options.trials),
           json: asString(options.json),
           minLift: asNumber(options.minLift),
+          isolate: Boolean(options.isolate),
+          skillDir: asString(options.skillDir),
+          vs: asString(options.vs),
+          minImprovement: asNumber(options.minImprovement),
         },
         ctx,
       );
