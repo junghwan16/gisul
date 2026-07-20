@@ -10,9 +10,9 @@ examples/
   review-pr/
     SKILL.md                 # a real, self-contained skill
     review-pr.eval.yaml      # its eval suite, shipped alongside it
-  commit-style/
+  sql/
     SKILL.md
-    commit-style.eval.yaml
+    sql.eval.yaml
   smoke.eval.yaml            # runner self-check — no skill at all
 ```
 
@@ -24,13 +24,19 @@ to review, so its suite sets **`cwd: ../..`** to run against the skillevel repo
 root (a real git repo). This is the per-suite working-directory knob — without
 it, the happy cases would report `fired: none` in an empty directory.
 
-**`commit-style`** — writes a Conventional Commits message from staged or
-described changes.
+**`sql`** — writes a query against our analytics warehouse (a made-up ad-serving
+star schema) from a plain-language ask. It's the mirror image: a _pure-text_
+skill with **no repo state**, so its happy cases need no `cwd`. Its point is
+**lift** — base Claude invents plausible table names (`impressions`, `revenue`),
+so it fails the schema checks; only the skill knows the real `fact_impression`
+table, the micro-USD money column, and the `dt` partition rule. `bench sql`
+turns that gap into a number (a real **+100pp** on the primary case).
 
 The two pin **each other's** routing boundary: `review-pr`'s suite has a case
-that must route to `commit-style` ("write a commit message"), and
-`commit-style`'s suite has the mirror ("review my branch") — a fully
-self-contained `expect_skill` collision, no external skills needed.
+that must route to `sql` ("write a query"), and `sql`'s suite has the mirror
+("review my branch") — a fully self-contained `expect_skill` collision, no
+external skills needed. `sql`'s routing case borrows `review-pr`'s trick with a
+per-case **`cwd: ../..`**, since the sibling only fires where there's a diff.
 
 > Heads-up: `review-pr`'s suite goes fully green only when no _other_
 > diff-review skill is installed. If you also have a skill like `code-review`
@@ -44,19 +50,19 @@ skillevel tests the **installed** skill (what `claude -p` discovers). These
 live in the repo, so install them first — symlink each into `~/.claude/skills`:
 
 ```bash
-ln -s "$PWD/examples/review-pr"    ~/.claude/skills/review-pr
-ln -s "$PWD/examples/commit-style" ~/.claude/skills/commit-style
+ln -s "$PWD/examples/review-pr" ~/.claude/skills/review-pr
+ln -s "$PWD/examples/sql"       ~/.claude/skills/sql
 ```
 
 Then, from the repo root:
 
 ```bash
 # offline — costs nothing, catches schema errors + previews run count:
-npx skillevel validate examples/review-pr/review-pr.eval.yaml
+npx skillevel validate examples/sql/sql.eval.yaml
 
 # a real run (bound the cost with --trials):
-npx skillevel review-pr --trials 1
-npx skillevel bench review-pr --trials 1     # does the skill actually help?
+npx skillevel sql --trials 1
+npx skillevel bench sql --trials 1     # does the skill actually help?
 
 # always runnable, no skill needed — cheapest end-to-end check:
 npx skillevel examples/smoke.eval.yaml
@@ -66,6 +72,6 @@ The authoring toolchain works on the in-repo copies directly (local skills win
 over installed ones), no symlink required:
 
 ```bash
-npx skillevel lint examples/review-pr examples/commit-style
-npx skillevel fmt  --check examples/review-pr examples/commit-style
+npx skillevel lint examples/review-pr examples/sql
+npx skillevel fmt  --check examples/review-pr examples/sql
 ```

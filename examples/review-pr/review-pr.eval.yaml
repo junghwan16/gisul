@@ -9,8 +9,8 @@
 # with a diff — because review-pr only fires when there's something to review.
 # (Demonstrates the per-suite `cwd` knob; resolved relative to this file.)
 #
-# The routing case collides with the sibling example skill examples/commit-style
-# — "write a commit message" must route there, and review-pr must stay out.
+# The routing case collides with the sibling example skill examples/sql
+# — "write a query" must route there, and review-pr must stay out.
 
 skill: review-pr
 trials: 3
@@ -63,6 +63,6 @@ cases:
       - not_triggered
 
   # -- routing: the sibling example skill must win; review-pr must stay out --
-  - id: route-commit-style
-    prompt: "Write a commit message for my staged changes."
-    expect_skill: commit-style
+  - id: route-sql
+    prompt: "Write a query to pull last week's revenue by campaign."
+    expect_skill: sql

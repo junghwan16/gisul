@@ -17,14 +17,14 @@ You describe both in a small YAML file; `skillevel` runs each case repeatedly
 through `claude -p`, scores the pass-rate, and prints a familiar test report:
 
 ```bash
-$ skillevel commit-style
+$ skillevel sql
 
-commit-style  ./commit-style.eval.yaml
-  ✓ happy-staged-changes   5/5
-  ✓ happy-bugfix           5/5
-  ✗ neg-explain-format     3/5
-      ✗ stays out (commit-style) — fired: commit-style
-  ○ happy-breaking         TODO — unwritten
+sql  ./sql.eval.yaml
+  ✓ aggregate-revenue      5/5
+  ✓ top-advertisers        5/5
+  ✗ neg-explain-join       3/5
+      ✗ stays out (sql) — fired: sql
+  ○ daily-impressions      TODO — unwritten
 
 1 failed · 2 passed · 1 todo   $0.21
 ```
@@ -38,46 +38,47 @@ Requires [Claude Code](https://claude.com/claude-code) on your `PATH` (the
 `claude` CLI, logged in) and Node ≥ 18. No install needed — `npx` works, or
 `npm i -g skillevel` for a global command.
 
-Say your team keeps a `commit-style` skill that writes conventional commit
-messages following your rules.
+Say your team keeps a `sql` skill that writes queries against your warehouse
+schema — the tables, the money units, the partition rules base Claude can't guess.
 
 **1. Scaffold with one command:**
 
 ```bash
-npx skillevel@latest new commit-style
+npx skillevel@latest new sql
 ```
 
 `new` creates whatever the skill is missing and skips what's already there:
-if no skill named `commit-style` exists (locally or installed), it scaffolds
-`commit-style/SKILL.md`; either way it scaffolds `commit-style.eval.yaml`,
-reading the skill's own `SKILL.md` and quoting its trigger keywords into a
-comment. It leaves clearly-marked placeholders — it never invents cases for
-you (auto-generated tests plant plausible-but-wrong checks).
+if no skill named `sql` exists (locally or installed), it scaffolds
+`sql/SKILL.md`; either way it scaffolds `sql.eval.yaml`,
+reading the skill's own `SKILL.md` and quoting any trigger keywords it lists
+into a comment (or pointing you at its description when it lists none). It
+leaves clearly-marked placeholders — it never invents cases for you
+(auto-generated tests plant plausible-but-wrong checks).
 
 **2. Replace the placeholders with real prompts** — things you (or your
 users) actually typed. Aim for ~5 that should fire and ~5 near-misses that
 must not:
 
 ```yaml
-skill: commit-style
+skill: sql
 trials: 5
 
 cases:
-  - id: happy-staged-changes
-    prompt: "Write a commit message for the staged changes"
+  - id: aggregate-revenue
+    prompt: "Write a query for last week's revenue by campaign"
     should_trigger: true
     expect:
-      - match: "(feat|fix|chore)(\\(.+\\))?:" # answer follows the format
+      - match: "fact_impression" # answer uses the real schema, not an invented table
 
-  - id: neg-explain-format # adjacent topic — must NOT fire
-    prompt: "What's the difference between feat and fix in conventional commits?"
+  - id: neg-explain-join # adjacent topic — must NOT fire
+    prompt: "Explain the difference between an INNER JOIN and a LEFT JOIN"
     should_trigger: false
 ```
 
 **3. Run it:**
 
 ```bash
-npx skillevel commit-style
+npx skillevel sql
 ```
 
 Red cases tell you exactly how the skill misfired (`fired: <skill>`); edit
@@ -85,7 +86,7 @@ the skill's `description`, run again, repeat until green. When it triggers
 right, measure whether it actually improves answers:
 
 ```bash
-npx skillevel bench commit-style
+npx skillevel bench sql
 ```
 
 ## Commands
@@ -112,7 +113,7 @@ Suites are discovered automatically: any `*.eval.yaml` (or `evals/cases.yaml`)
 under the current directory.
 
 See [`examples/`](./examples/) for two self-contained skill packages —
-`review-pr` and `commit-style`, each shipping its `SKILL.md` next to its eval
+`review-pr` and `sql`, each shipping its `SKILL.md` next to its eval
 suite — that pin each other's routing boundary and were built by dogfooding
 skillevel's own toolchain.
 
@@ -125,9 +126,9 @@ Every case is a `prompt` plus a trigger expectation — either
 `should_trigger: true|false`, or the routing form `expect_skill`:
 
 ```yaml
-- id: collision-pr-description
-  prompt: "Draft a description for this pull request"
-  expect_skill: pr-desc # the sibling must win; commit-style must stay out
+- id: collision-review
+  prompt: "Review my branch against main"
+  expect_skill: review-pr # the sibling must win; this suite's own skill stays out
 ```
 
 `expect_skill: <sibling>` pins down the #1 failure mode of a growing skill
@@ -173,15 +174,15 @@ twice — once with the skill available, once with skills blocked
 `match` / `absent` / `judge` expectations, and reports the lift:
 
 ```bash
-$ skillevel bench commit-style
+$ skillevel bench sql
 
-commit-style  ./commit-style.eval.yaml
+sql  ./sql.eval.yaml
   case                    with   without    lift
-  happy-staged-changes     3/3       1/3   +67pp
-  happy-bugfix             3/3       3/3     0pp
-  neg-explain-format    — skipped (needs should_trigger: true + match/absent/judge)
+  aggregate-revenue        3/3       0/3  +100pp
+  top-advertisers          3/3       1/3   +67pp
+  neg-explain-join      — skipped (needs should_trigger: true + match/absent/judge)
 
-▲ skill lift: +34pp   (48% → 82%)   2 benched · 1 skipped   $0.85
+▲ skill lift: +84pp   (17% → 100%)   2 benched · 1 skipped   $0.85
 ```
 
 How to read it:
@@ -266,9 +267,9 @@ working directory to the temp project, so they refuse suites that declare a
 ```bash
 $ skillevel lint
 
-commit-style/SKILL.md
+sql/SKILL.md
   error unexpected-key — unexpected frontmatter key(s): triggers (allowed: …)
-  warning broken-reference — referenced file does not exist: references/rules.md
+  warning broken-reference — referenced file does not exist: references/schema.md
 
 1 file · 1 errors · 1 warnings
 ```

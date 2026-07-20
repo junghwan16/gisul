@@ -1,0 +1,78 @@
+# sql.eval.yaml — eval suite shipped alongside the skill it tests.
+#
+# Production layout:
+#   examples/sql/
+#     SKILL.md
+#     sql.eval.yaml   ← you are here
+#
+# Why this example exists: the query is pure text (no repo/git state), so the
+# happy cases need no `cwd`. Their value is *lift* — base Claude invents plausible
+# table names (`impressions`, `revenue`, `campaigns`); only the skill knows the
+# real schema, the micro-USD money column, and the `dt` partition rule. `bench`
+# turns that gap into a number.
+#
+# The routing case is the mirror of review-pr's: "review my branch" must route
+# to examples/review-pr, and sql must stay out — the two example skills pin
+# each other's boundary. review-pr only fires where there's a diff, so that one
+# case pins its own `cwd: ../..` (the skillevel repo root, a real git repo).
+
+skill: sql
+trials: 3
+model: sonnet
+
+cases:
+  # -- happy (should fire) -------------------------------------------------
+  - id: aggregate-revenue
+    prompt: "Write a query for last week's revenue by campaign."
+    should_trigger: true
+    expect:
+      - triggered
+      - match: "fact_impression"
+      - match: "revenue_micros" # money is micros — base Claude won't know this
+      # Benchable: does it use the real schema, not invented tables?
+      - judge: >
+          Does the query select from fact_impression joined to dim_campaign,
+          convert revenue by dividing revenue_micros by 1e6, and bound the dt
+          partition in the WHERE clause? PASS only if all three hold.
+
+  - id: top-advertisers
+    prompt: "Pull the top 10 advertisers by spend this month."
+    should_trigger: true
+    expect:
+      - triggered
+      - match: "dim_advertiser"
+      - match: "revenue_micros"
+
+  - id: daily-impressions
+    prompt: "Give me daily impression counts for the last 30 days."
+    should_trigger: true
+    expect:
+      - triggered
+      - match: "fact_impression"
+      - match: "\\bdt\\b" # must filter/group the partition column
+
+  # -- negative (must NOT fire — near-miss) --------------------------------
+  - id: neg-explain-join
+    prompt: "Explain the difference between an INNER JOIN and a LEFT JOIN."
+    should_trigger: false
+    expect:
+      - not_triggered
+
+  - id: neg-window-fn
+    prompt: "How do SQL window functions like ROW_NUMBER() work?"
+    should_trigger: false
+    expect:
+      - not_triggered
+
+  - id: neg-tune-generic
+    prompt: "My Postgres query is slow — how do I add the right index?"
+    should_trigger: false
+    expect:
+      - not_triggered
+
+  # -- routing: the sibling example skill must win; sql must stay out ------
+  # review-pr only fires with a diff, so this case runs at the repo root.
+  - id: route-review-pr
+    prompt: "Review my branch against main before I open the PR."
+    expect_skill: review-pr
+    cwd: ../.. # a real git repo with changes to review

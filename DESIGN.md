@@ -312,15 +312,17 @@ eval suite:
 
 ```
 examples/review-pr/{SKILL.md, review-pr.eval.yaml}   # cwd: ../.. showcase
-examples/commit-style/{SKILL.md, commit-style.eval.yaml}
+examples/sql/{SKILL.md, sql.eval.yaml}               # lift showcase (proprietary schema)
 examples/smoke.eval.yaml                              # runner self-check
 ```
 
 The two skills pin **each other's** routing (`review-pr`'s suite routes "write a
-commit message" to `commit-style`, and vice-versa) — a fully self-contained
-`expect_skill` collision needing no external skills. The authoring toolchain
-(`lint`/`fmt`/`validate`) runs on the in-repo copies directly (local skills win
-over installed).
+query" to `sql`, and vice-versa) — a fully self-contained `expect_skill`
+collision needing no external skills. `sql` also carries the **lift** story: it
+knows a warehouse schema base Claude can't guess, so `bench sql` shows a real
++100pp instead of the ~0pp a well-known format like conventional commits earns.
+The authoring toolchain (`lint`/`fmt`/`validate`) runs on the in-repo copies
+directly (local skills win over installed).
 
 Also closed: the invisible `expect_skill` "sibling must actually fire" semantic
 (now in the README) and the orphaned `examples/` dir.
