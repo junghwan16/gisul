@@ -196,8 +196,33 @@ Only happy cases (`should_trigger: true`) with output expectations are
 benchable — a trigger-only case has nothing to compare. Trials default to 3
 per arm (`--trials`) since every bench case costs two full runs plus a grader
 call per `judge`. Both arms run interleaved in the same batch so model drift
-hits them equally. Caveat: the baseline blocks _all_ skills, not just the one
-under test — fine unless the prompt would have pulled in a sibling.
+hits them equally.
+
+The default baseline blocks _all_ skills (`--disallowedTools Skill`) — cheap,
+but it measures "this skill vs no skills", which overstates lift when the
+prompt would have pulled in a sibling. **`--isolate`** runs true per-skill
+ablation instead: both arms run in throwaway temp projects
+(`.claude/skills/…` + `--setting-sources project`), the "with" arm holding
+every discoverable skill and the "without" arm every skill _except_ the
+target — siblings stay free to fire in both.
+
+## Evaling an uncommitted skill (`--skill-dir`)
+
+By default, runs test whatever `claude -p` already discovers — the installed
+skill, not your working copy. `--skill-dir <path>` (a skill directory or its
+`SKILL.md`) materializes the working copy into an isolated temp project and
+runs everything there, no install or symlink needed:
+
+```bash
+skillevel run sql --skill-dir ./skills/sql     # trigger-eval the edit
+skillevel bench sql --skill-dir ./skills/sql   # A/B the edit (implies --isolate)
+```
+
+The working copy replaces any installed skill of the same frontmatter
+`name`; every other discoverable skill is materialized alongside it, so
+`expect_skill` routing/collision cases still work. Isolated runs pin their
+working directory to the temp project, so they refuse suites that declare a
+`cwd:` fixture rather than silently mis-running them.
 
 ## Authoring `SKILL.md`
 
@@ -255,9 +280,8 @@ known — the summary line prints what each run actually cost.
 ## Good to know
 
 - **What's under test is the _installed_ skill** — whatever `claude -p`
-  discovers (`~/.claude/skills`, the project's `.claude/skills`, plugins). To
-  eval a working-copy edit, symlink or install it first. Isolated
-  `--skill-dir` runs are on the roadmap ([DESIGN.md](./DESIGN.md)).
+  discovers (`~/.claude/skills`, the project's `.claude/skills`, plugins) —
+  unless you pass `--skill-dir` to eval a working copy in isolation.
 - **There is deliberately no `--watch`** — every run costs real money and
   minutes; re-running is a decision, not a save-hook.
 - **`skill:` must match the Skill tool's name** — the leaf name Claude Code

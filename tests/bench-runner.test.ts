@@ -67,6 +67,37 @@ describe("benchSuites", () => {
     ]);
   });
 
+  it("isolation swaps the arm cwds instead of blocking the Skill tool", async () => {
+    // The skill only "exists" in the with-arm project.
+    const runner = new FakeRunner((_prompt, options) =>
+      outcome({
+        text: options.cwd === "/proj/with" ? "SELECT * FROM t" : "no idea",
+      }),
+    );
+    const results = await benchSuites([suite([benchable])], runner, {
+      trials: 2,
+      isolation: (skill) => {
+        expect(skill).toBe("sql");
+        return { withCwd: "/proj/with", withoutCwd: "/proj/without" };
+      },
+    });
+    expect(results[0]!.cases[0]).toMatchObject({
+      withPassed: 2,
+      withoutPassed: 0,
+    });
+    const cwds = runner.calls.map((c) => c.options.cwd).sort();
+    expect(cwds).toEqual([
+      "/proj/with",
+      "/proj/with",
+      "/proj/without",
+      "/proj/without",
+    ]);
+    for (const call of runner.calls) {
+      expect(call.options.disallowSkills).toBeUndefined();
+      expect(call.options.isolate).toBe(true);
+    }
+  });
+
   it("accumulates cost across both arms", async () => {
     const results = await benchSuites(
       [suite([benchable])],

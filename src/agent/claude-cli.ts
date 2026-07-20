@@ -85,5 +85,6 @@ function buildArgs(prompt: string, options: AgentRunOptions): string[] {
   if (options.model) args.push("--model", options.model);
   if (options.maxTurns) args.push("--max-turns", String(options.maxTurns));
   if (options.disallowSkills) args.push("--disallowedTools", "Skill");
+  if (options.isolate) args.push("--setting-sources", "project");
   return args;
 }
